@@ -487,3 +487,17 @@ local musicLibrary = {
     {id = 96491894597654, name = "灵感菇菇菇嘎嘎"},
     {id = 110019502835548, name = "donk哈基米"},
     {id = 7847207
+
+-- 逐个创建按钮
+for _, song in ipairs(musicLibrary) do
+    MusicListSection:Button({
+        Title = song.name,
+        Description = "ID: " .. tostring(song.id),
+        Color = Purple,
+        Justify = "Left",
+        Callback = function()
+            playMusic(song.id, song.name)
+        end,
+    })
+end
+```
