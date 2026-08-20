@@ -1,0 +1,214 @@
+-- MOBILE PLAYER LOCK-ON SYSTEM
+-- R6 + R15
+-- Lock + Next + Red Target
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local lockedTarget = nil
+local lockEnabled = false
+local cooldown = false
+local targetMark = nil
+
+local MAX_DISTANCE = 150
+local COOLDOWN_TIME = 1.5
+
+
+-- UI
+local gui = Instance.new("ScreenGui")
+gui.Name = "LockOnUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+
+local lockButton = Instance.new("TextButton")
+lockButton.Size = UDim2.new(0,90,0,90)
+lockButton.Position = UDim2.new(1,-120,0,120)
+lockButton.Text = "LOCK"
+lockButton.TextScaled = true
+lockButton.Parent = gui
+
+
+local nextButton = Instance.new("TextButton")
+nextButton.Size = UDim2.new(0,90,0,90)
+nextButton.Position = UDim2.new(1,-120,0,230)
+nextButton.Text = "NEXT"
+nextButton.TextScaled = true
+nextButton.Parent = gui
+
+
+
+-- Red outline
+local function markTarget(character)
+
+	if targetMark then
+		targetMark:Destroy()
+	end
+
+	if character then
+		
+		targetMark = Instance.new("Highlight")
+		targetMark.Name = "LockedTarget"
+		targetMark.FillTransparency = 1
+		targetMark.OutlineColor = Color3.fromRGB(255,0,0)
+		targetMark.Parent = character
+		
+	end
+end
+
+
+local function clearMark()
+
+	if targetMark then
+		targetMark:Destroy()
+		targetMark = nil
+	end
+
+end
+
+
+
+-- Find nearest player
+local function findPlayer()
+
+	local myChar = player.Character
+	local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+	if not myRoot then
+		return nil
+	end
+
+
+	local closest = nil
+	local shortest = MAX_DISTANCE
+
+
+	for _,enemy in pairs(Players:GetPlayers()) do
+		
+		if enemy ~= player and enemy.Character then
+			
+			local root = enemy.Character:FindFirstChild("HumanoidRootPart")
+			local hum = enemy.Character:FindFirstChild("Humanoid")
+
+			if root and hum and hum.Health > 0 then
+				
+				local distance =
+					(myRoot.Position - root.Position).Magnitude
+
+				if distance < shortest then
+					shortest = distance
+					closest = enemy.Character
+				end
+			end
+		end
+	end
+
+	return closest
+end
+
+
+
+-- LOCK BUTTON
+lockButton.MouseButton1Click:Connect(function()
+
+	if cooldown then return end
+
+	cooldown = true
+
+
+	if lockEnabled then
+		
+		lockEnabled = false
+		lockedTarget = nil
+		clearMark()
+		lockButton.Text = "LOCK"
+
+	else
+		
+		lockedTarget = findPlayer()
+
+		if lockedTarget then
+			
+			lockEnabled = true
+			markTarget(lockedTarget)
+			lockButton.Text = "ON"
+			
+		end
+	end
+
+
+	task.wait(COOLDOWN_TIME)
+
+	cooldown = false
+
+end)
+
+
+
+-- NEXT TARGET
+nextButton.MouseButton1Click:Connect(function()
+
+	if not lockEnabled then return end
+
+
+	local list = {}
+
+	for _,enemy in pairs(Players:GetPlayers()) do
+		
+		if enemy ~= player and enemy.Character then
+			
+			local hum = enemy.Character:FindFirstChild("Humanoid")
+
+			if hum and hum.Health > 0 then
+				table.insert(list, enemy.Character)
+			end
+		end
+	end
+
+
+	local index = table.find(list, lockedTarget)
+
+	if index then
+		
+		index += 1
+
+		if index > #list then
+			index = 1
+		end
+
+		lockedTarget = list[index]
+		markTarget(lockedTarget)
+
+	end
+
+end)
+
+
+
+-- Make character face target
+RunService.RenderStepped:Connect(function()
+
+	if lockEnabled and lockedTarget then
+		
+		local targetRoot = lockedTarget:FindFirstChild("HumanoidRootPart")
+		local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+
+
+		if targetRoot and myRoot then
+			
+			myRoot.CFrame = CFrame.lookAt(
+				myRoot.Position,
+				Vector3.new(
+					targetRoot.Position.X,
+					myRoot.Position.Y,
+					targetRoot.Position.Z
+				)
+			)
+
+		end
+	end
+
+end)
