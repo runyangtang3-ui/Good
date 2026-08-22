@@ -1,12 +1,3 @@
--- [[ Rscripts 风险提示 ]]
--- 此脚本未经 rscripts.net 验证。请谨慎使用。
---
--- 安全须知：
---   • 切勿在非官方 Roblox 网站或仿冒域名上登录。
---   • 真正的 Roblox 链接使用 roblox.com（请确认 .com 结尾）。
---   • 将伪造的 Roblox 登录/“领取奖励”页面视为钓鱼网站。
--- [[ Rscripts 风险提示结束 ]]
-
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
