@@ -1,0 +1,424 @@
+--[[
+    砍树光环 v18（UI 与核心解耦，防加载失败全挂）
+    1. UI 库加载失败 / UI 创建出错 → 跳过 UI，核心砍树照常运行（默认开启）
+    2. UI 成功 → 开关/滑块实时控制
+    3. 美化渐变圆环 + 流动旋转 + 半透明十字 + 中心光点
+    4. 锁定修复：排除玩家与装饰物，标点只出现在树上
+    5. 拿斧开/放斧关
+]]
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+
+-- ============ 设置（默认开启，UI 可覆盖） ============
+local Settings = {
+    enabled    = true,  -- 总开关（默认开）
+    radius     = 20,    -- 光环半径
+    chopRange  = 12,    -- 触发距离
+    cooldown   = 1,     -- 砍击冷却
+    showLock   = true,  -- 锁定标记
+    rayHeight  = 2,     -- 射线起点抬高
+}
+
+-- ============ Obsidian UI（失败不影响核心） ============
+local ObsidianRepo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/"
+local Library = nil
+pcall(function()
+    loadstring(game:HttpGet(ObsidianRepo .. "Library.lua"))()
+    Library = getgenv().Library or getgenv().ObsidianLibrary
+end)
+
+if Library then
+    pcall(function()
+        local Window = Library:CreateWindow({
+            Title = "★ 红星 hx 中心",
+            Footer = "砍树光环 v18",
+            Center = true,
+            AutoShow = true,
+            NotifySide = "Right",
+        })
+
+        local Tabs = {
+            Main = Window:AddTab("Main", "box"),
+            SettingsTab = Window:AddTab("UI Settings", "settings"),
+        }
+
+        local mainBox = Tabs.Main:AddLeftGroupbox("砍树光环")
+
+        mainBox:AddToggle("AuraToggle", {
+            Text = "光环总开关",
+            Default = true,
+            Callback = function(val)
+                Settings.enabled = val
+                print("[ChopAura] 光环总开关：" .. tostring(val))
+            end,
+        })
+
+        mainBox:AddSlider("RangeSlider", {
+            Text = "触发距离",
+            Default = 12,
+            Min = 5,
+            Max = 20,
+            Rounding = 1,
+            Compact = false,
+            Callback = function(val)
+                Settings.chopRange = val
+            end,
+        })
+
+        mainBox:AddSlider("RadiusSlider", {
+            Text = "光环半径",
+            Default = 20,
+            Min = 10,
+            Max = 40,
+            Rounding = 1,
+            Compact = false,
+            Callback = function(val)
+                Settings.radius = val
+            end,
+        })
+
+        mainBox:AddSlider("CooldownSlider", {
+            Text = "砍击冷却(秒)",
+            Default = 1,
+            Min = 0.2,
+            Max = 2,
+            Rounding = 2,
+            Compact = false,
+            Callback = function(val)
+                Settings.cooldown = val
+            end,
+        })
+
+        mainBox:AddButton({
+            Text = "锁定标记：开/关",
+            Func = function()
+                Settings.showLock = not Settings.showLock
+                print("[ChopAura] 锁定标记：" .. tostring(Settings.showLock))
+            end,
+        })
+
+        Tabs.SettingsTab:AddLeftGroupbox("菜单"):AddLabel("菜单按键"):AddKeyPicker("MenuKeybind", {
+            Default = "RightShift",
+            NoUI = true,
+            Text = "菜单按键",
+        })
+        Library.ToggleKeybind = Options.MenuKeybind
+    end)
+else
+    warn("[ChopAura] Obsidian 库加载失败，跳过 UI，使用默认设置继续运行")
+end
+
+-- ============ 工具查找 ============
+local function FindChopEvent()
+    local char = LocalPlayer.Character
+    if char then
+        for _, child in ipairs(char:GetChildren()) do
+            if child:IsA("Tool") then
+                local ev = child:FindFirstChild("ChopEvent")
+                if ev then return ev, child end
+            end
+        end
+    end
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, child in ipairs(backpack:GetChildren()) do
+            if child:IsA("Tool") then
+                local ev = child:FindFirstChild("ChopEvent")
+                if ev then return ev, child end
+            end
+        end
+    end
+    return nil, nil
+end
+
+local function GetObjPosition(obj)
+    local ok, pos = pcall(function()
+        if obj:IsA("BasePart") then
+            return obj.Position
+        elseif obj:IsA("Model") then
+            return obj:GetPivot().Position
+        end
+        return nil
+    end)
+    if ok then return pos end
+    return nil
+end
+
+-- ============ 可视化（美化版） ============
+local SEGMENTS = 40
+local ring = {}
+local ringModel = Instance.new("Model")
+ringModel.Name = "ChopAuraRing"
+ringModel.Parent = workspace
+
+for i = 1, SEGMENTS do
+    local seg = Instance.new("Part")
+    seg.Size = Vector3.new(1.4, 0.6, 1.4)
+    seg.Anchored = true
+    seg.CanCollide = false
+    seg.CanQuery = false
+    seg.CanTouch = false
+    seg.Material = Enum.Material.Neon
+    local hue = 0.32 + (i - 1) / SEGMENTS * 0.18
+    seg.Color = Color3.fromHSV(hue, 1, 1)
+    seg.Parent = ringModel
+    ring[i] = seg
+end
+
+local crossModel = Instance.new("Model")
+crossModel.Name = "ChopAuraCross"
+crossModel.Parent = workspace
+
+local crossH = Instance.new("Part")
+crossH.Size = Vector3.new(40, 0.5, 0.5)
+crossH.Transparency = 0.25
+crossH.Anchored = true
+crossH.CanCollide = false
+crossH.CanQuery = false
+crossH.CanTouch = false
+crossH.Material = Enum.Material.Neon
+crossH.Color = Color3.fromRGB(0, 255, 140)
+crossH.Parent = crossModel
+
+local crossV = Instance.new("Part")
+crossV.Size = Vector3.new(0.5, 0.5, 40)
+crossV.Transparency = 0.25
+crossV.Anchored = true
+crossV.CanCollide = false
+crossV.CanQuery = false
+crossV.CanTouch = false
+crossV.Material = Enum.Material.Neon
+crossV.Color = Color3.fromRGB(0, 255, 140)
+crossV.Parent = crossModel
+
+local coreGlow = Instance.new("Part")
+coreGlow.Size = Vector3.new(1.2, 1.2, 1.2)
+coreGlow.Shape = Enum.PartType.Ball
+coreGlow.Transparency = 0.3
+coreGlow.Anchored = true
+coreGlow.CanCollide = false
+coreGlow.CanQuery = false
+coreGlow.CanTouch = false
+coreGlow.Material = Enum.Material.Neon
+coreGlow.Color = Color3.fromRGB(255, 255, 255)
+coreGlow.Parent = crossModel
+
+local highlight, highlightOK = nil, false
+local marker, markerOK = nil, false
+
+highlightOK = pcall(function()
+    highlight = Instance.new("Highlight")
+    highlight.Name = "ChopAuraLock"
+    highlight.FillTransparency = 1
+    highlight.OutlineTransparency = 0
+    highlight.OutlineColor = Color3.fromRGB(255, 200, 0)
+    highlight.OutlineThickness = 0.6
+    highlight.Parent = workspace
+end)
+
+markerOK = pcall(function()
+    marker = Instance.new("Part")
+    marker.Name = "ChopAuraTargetMarker"
+    marker.Size = Vector3.new(1.8, 1.8, 1.8)
+    marker.Shape = Enum.PartType.Ball
+    marker.Anchored = true
+    marker.CanCollide = false
+    marker.CanQuery = false
+    marker.CanTouch = false
+    marker.Material = Enum.Material.Neon
+    marker.Color = Color3.fromRGB(255, 200, 0)
+    marker.Parent = workspace
+    marker.Transparency = 1
+end)
+
+-- ============ 忽略集合 ============
+local ignoreSet = {}
+local function MarkIgnore(inst)
+    if inst then
+        ignoreSet[inst] = true
+        for _, d in ipairs(inst:GetDescendants()) do ignoreSet[d] = true end
+    end
+end
+MarkIgnore(ringModel)
+MarkIgnore(crossModel)
+MarkIgnore(marker)
+if highlight then MarkIgnore(highlight) end
+
+local function RefreshIgnorePlayers()
+    for _, p in ipairs(Players:GetPlayers()) do
+        local c = p.Character
+        if c then MarkIgnore(c) end
+    end
+end
+RefreshIgnorePlayers()
+Players.PlayerAdded:Connect(function() RefreshIgnorePlayers() end)
+Players.PlayerRemoving:Connect(function() RefreshIgnorePlayers() end)
+
+-- ============ 扫描 ============
+local function GetNearbyObjects(rootPos)
+    local seen = {}
+    local candidates = {}
+    local function check(obj)
+        if seen[obj] or ignoreSet[obj] then return end
+        seen[obj] = true
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            local pos = GetObjPosition(obj)
+            if pos and pos.Magnitude > 0.001 then
+                local dist = (pos - rootPos).Magnitude
+                if dist <= Settings.radius then
+                    table.insert(candidates, {obj = obj, pos = pos})
+                end
+            end
+        end
+    end
+    for _, obj in ipairs(workspace:GetDescendants()) do check(obj) end
+    for _, obj in getnilinstances() do check(obj) end
+    return candidates
+end
+
+local lockedTarget = nil
+
+-- ============ 显隐控制 ============
+local function SetVisual(visible)
+    local t = visible and 0 or 1
+    for i = 1, SEGMENTS do ring[i].Transparency = t end
+    crossH.Transparency = visible and 0.25 or 1
+    crossV.Transparency = visible and 0.25 or 1
+    coreGlow.Transparency = visible and 0.3 or 1
+    if marker then marker.Transparency = 1 end
+end
+
+-- ============ 渲染循环 ============
+RunService.RenderStepped:Connect(function()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local pos = root.Position
+    local y = pos.Y - 2.5
+    local R = Settings.radius
+    local spin = os.clock() * 0.6
+
+    for i = 1, SEGMENTS do
+        local angle = (i - 1) / SEGMENTS * math.pi * 2 + spin
+        ring[i].CFrame = CFrame.new(
+            pos.X + math.cos(angle) * R,
+            y,
+            pos.Z + math.sin(angle) * R
+        )
+    end
+
+    local look = root.CFrame.LookVector
+    local yaw = math.atan2(-look.Z, look.X)
+    crossH.Size = Vector3.new(R * 2, 0.5, 0.5)
+    crossV.Size = Vector3.new(0.5, 0.5, R * 2)
+    crossH.CFrame = CFrame.new(pos.X, y, pos.Z) * CFrame.Angles(0, yaw, 0)
+    crossV.CFrame = CFrame.new(pos.X, y, pos.Z) * CFrame.Angles(0, yaw, 0)
+    coreGlow.CFrame = CFrame.new(pos.X, y, pos.Z)
+
+    if markerOK then
+        if lockedTarget and Settings.showLock then
+            marker.Transparency = 0
+            local mp = lockedTarget.pos
+            marker.CFrame = CFrame.new(mp.X, mp.Y + 6, mp.Z)
+        else
+            marker.Transparency = 1
+        end
+    end
+
+    if highlightOK then
+        if lockedTarget and Settings.showLock then
+            pcall(function() highlight.Adornee = lockedTarget.obj end)
+        else
+            pcall(function() highlight.Adornee = nil end)
+        end
+    end
+end)
+
+-- ============ 主逻辑 ============
+task.spawn(function()
+    local cooldown = {}
+    local candidates = {}
+    local lastScan = 0
+    local lastWarn = 0
+    local equipped = false
+
+    print("[ChopAura] v18 启动，默认开启，拿斧砍树")
+
+    while true do
+        task.wait(0.1)
+
+        local chopEvent, tool = FindChopEvent()
+        if not chopEvent then
+            local now = os.clock()
+            if now - lastWarn > 2 then
+                lastWarn = now
+                warn("[ChopAura] 未找到带 ChopEvent 的斧头")
+            end
+            continue
+        end
+
+        local inHand = tool.Parent == LocalPlayer.Character
+        if inHand ~= equipped then
+            equipped = inHand
+            if equipped then
+                print("[ChopAura] 斧头已拿起")
+            else
+                lockedTarget = nil
+                print("[ChopAura] 斧头已放下")
+            end
+        end
+
+        if not Settings.enabled or not equipped then
+            SetVisual(false)
+            lockedTarget = nil
+            continue
+        end
+
+        SetVisual(true)
+
+        local char = LocalPlayer.Character
+        if not char then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+
+        local now = os.clock()
+        local rootPos = root.Position
+
+        if now - lastScan > 0.5 then
+            lastScan = now
+            candidates = GetNearbyObjects(rootPos)
+        end
+
+        local nearest = nil
+        local bestDist = math.huge
+        for _, c in ipairs(candidates) do
+            local dist = (c.pos - rootPos).Magnitude
+            if dist < bestDist then
+                bestDist = dist
+                nearest = c
+            end
+        end
+        lockedTarget = (nearest and bestDist <= Settings.radius) and nearest or nil
+
+        local hitCount = 0
+        for _, c in ipairs(candidates) do
+            local dist = (c.pos - rootPos).Magnitude
+            if dist > Settings.chopRange then continue end
+
+            local last = cooldown[c.obj] or 0
+            if now - last < Settings.cooldown then continue end
+            cooldown[c.obj] = now
+
+            local origin = rootPos + Vector3.new(0, Settings.rayHeight, 0)
+            chopEvent:FireServer(c.obj, CFrame.lookAt(origin, c.pos), false)
+            hitCount = hitCount + 1
+        end
+
+        if hitCount > 0 then
+            print("[ChopAura] 触发 " .. hitCount .. " 次")
+        end
+    end
+end)
