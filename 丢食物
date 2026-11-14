@@ -1,0 +1,2188 @@
+--!native
+local function New(className, props, parent)
+	local inst = Instance.new(className)
+	for k, v in pairs(props or {}) do
+		inst[k] = v
+	end
+	if parent then
+		inst.Parent = parent
+	end
+	return inst
+end
+getgenv()._thrT = getgenv()._thrT or {}
+getgenv()._canRun = function(key, interval)
+	local n = tick()
+	local l = getgenv()._thrT[key]
+	if not l or n - l >= interval then
+		getgenv()._thrT[key] = n
+		return true
+	end
+	return false
+end
+do
+	local _ = getgenv()._canRun
+end
+do
+	local Players = game:GetService("Players")
+	local LocalPlayer = Players.LocalPlayer
+	local function createErrorToast(msg)
+		pcall(function()
+			local pg = LocalPlayer:FindFirstChild("PlayerGui")
+			if not pg then
+				return
+			end
+			local sg = pg:FindFirstChild("SkinHubErrorToast")
+			if not sg then
+				sg = Instance.new("ScreenGui")
+				sg.Name = "SkinHubErrorToast"
+				sg.ResetOnSpawn = false
+				sg.IgnoreGuiInset = true
+				sg.DisplayOrder = 2147483647
+				sg.Parent = pg
+				local frame = New("Frame", { Name = "Container", Size = UDim2.new(0, 380, 0, 260), Position = UDim2.new(1, -395, 0.5, -130),
+					BackgroundColor3 = Color3.fromRGB(20, 20, 25), BackgroundTransparency = 0.05, BorderSizePixel = 0,
+					Visible = false
+				}, sg)
+				New("UICorner", { CornerRadius = UDim.new(0, 8) }, frame)
+				New("UIStroke", { Color = Color3.fromRGB(255, 80, 80), Thickness = 2 }, frame)
+				New("TextLabel", { Size = UDim2.new(1, -60, 0, 30), Position = UDim2.new(0, 15, 0, 15),
+					Text = "\u{9632}\u{5D29}\u{6E83}", TextColor3 = Color3.fromRGB(255, 80, 80),
+					BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 15,
+					TextXAlignment = Enum.TextXAlignment.Left
+				}, frame)
+				local close = New("TextButton", { Size = UDim2.new(0, 30, 0, 30), Position = UDim2.new(1, -45, 0, 10), Text = "\u{2715}",
+					TextColor3 = Color3.fromRGB(200, 200, 200), BackgroundTransparency = 1, Font = Enum.Font.GothamBold,
+					TextSize = 16
+				}, frame)
+				local box = New("ScrollingFrame", { Name = "ErrorBox", Size = UDim2.new(1, -30, 1, -60), Position = UDim2.new(0, 15, 0, 50),
+					BackgroundColor3 = Color3.fromRGB(10, 10, 15), BorderSizePixel = 0, ScrollBarThickness = 4,
+					CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y
+				}, frame)
+				New("UICorner", { CornerRadius = UDim.new(0, 6) }, box)
+				New("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 10),
+					PaddingBottom = UDim.new(0, 10)
+				}, box)
+				New("TextLabel", { Name = "TextContent", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+					BackgroundTransparency = 1, Text = "", TextColor3 = Color3.fromRGB(255, 120, 120),
+					Font = Enum.Font.Code, TextSize = 12, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Top
+				}, box)
+				close.MouseButton1Click:Connect(function()
+					frame.Visible = false
+				end)
+			end
+			local frame = sg:FindFirstChild("Container")
+			if frame then
+				frame.Visible = true
+				local box = frame:FindFirstChild("ErrorBox")
+				if box then
+					local text = box:FindFirstChild("TextContent")
+					if text then
+						local timeStr = os.date("%H:%M:%S")
+						local newMsg = "[" .. timeStr .. "] " .. tostring(msg) .. "\n\n"
+						if #text.Text > 10000 then
+							text.Text = newMsg
+						else
+							text.Text = text.Text .. newMsg
+						end
+					end
+				end
+			end
+		end)
+	end
+	local function handleError(err)
+		local trace = ""
+		pcall(function()
+			trace = debug.traceback("", 3) or ""
+			trace = trace:gsub("\n%s*%[C%]: in function 'xpcall'", "")
+			trace = trace:gsub("\n%s*%[C%]: in function 'task%.spawn'", "")
+		end)
+		local finalMsg = tostring(err)
+		if trace ~= "" then
+			finalMsg = finalMsg .. "\n\u{6808}\u{8FFD}\u{8E2A}:\n" .. trace
+		end
+		createErrorToast(finalMsg)
+	end
+	local originalSpawn = task.spawn
+	local originalDelay = task.delay
+	local originalDefer = task.defer
+	local function safeExecute(fn, ...)
+		local args = table.pack(...)
+		return function()
+			local ok, err = xpcall(function()
+				fn(table.unpack(args, 1, args.n))
+			end, handleError)
+			return ok, err
+		end
+	end
+	pcall(function()
+		function task.spawn(fn, ...)
+			return originalSpawn(safeExecute(fn, ...))
+		end
+	end)
+	pcall(function()
+		function task.delay(delayTime, fn, ...)
+			return originalDelay(delayTime, safeExecute(fn, ...))
+		end
+	end)
+	pcall(function()
+		function task.defer(fn, ...)
+			return originalDefer(safeExecute(fn, ...))
+		end
+	end)
+	pcall(function()
+		if spawn then
+			local origSpawn = spawn
+			spawn = function(fn, ...)
+				return origSpawn(safeExecute(fn, ...))
+			end
+		end
+	end)
+	pcall(function()
+		if delay then
+			local origDelay = delay
+			delay = function(delayTime, fn, ...)
+				return origDelay(delayTime, safeExecute(fn, ...))
+			end
+		end
+	end)
+	pcall(function()
+		if coroutine and coroutine.wrap then
+			local origWrap = coroutine.wrap
+			function coroutine.wrap(fn)
+				return origWrap(function(...)
+					local ok = xpcall(fn, handleError, ...)
+					if not ok then
+						return nil
+					end
+				end)
+			end
+		end
+	end)
+end
+local tick_ = os.clock
+local mathFloor = math.floor
+local mathCeil = math.ceil
+local mathAbs = math.abs
+local mathMin = math.min
+local mathMax = math.max
+local mathHuge = math.huge
+local mathSqrt = math.sqrt
+local mathRad = math.rad
+local mathClamp = math.clamp
+local v3new = Vector3.new
+local v2new = Vector2.new
+local c3rgb = Color3.fromRGB
+local cfNew = CFrame.new
+local strFormat = string.format
+local cloneref = (function()
+	local Native = cloneref
+	if not Native then
+		return function(Object)
+			return Object
+		end
+	end
+	local Cache = setmetatable({}, { __mode = "v" })
+	return function(Object)
+		if not Object then
+			return nil
+		end
+		local Id = Object:GetDebugId()
+		local Cached = Cache[Id]
+		if Cached then
+			return Cached
+		end
+		local Cloned = Native(Object)
+		Cache[Id] = Cloned
+		return Cloned
+	end
+end)()
+pcall(function()
+	if getgenv().SkinHubCleanupAll then
+		getgenv().SkinHubCleanupAll()
+		getgenv().SkinHubCleanupAll = nil
+	end
+	local prev = getgenv().SkinHubInstance
+	if prev then
+		if prev.ScreenGui then
+			pcall(function()
+				prev.ScreenGui:Destroy()
+			end)
+		end
+		if type(prev.Unload) == "function" then
+			pcall(function()
+				prev:Unload()
+			end)
+		end
+		if type(prev.Destroy) == "function" then
+			pcall(function()
+				prev:Destroy()
+			end)
+		end
+	end
+	local lp = game:GetService("Players").LocalPlayer
+	local _sc = lp and lp:FindFirstChild("PlayerGui")
+	local cg = game:GetService("CoreGui")
+	local _sc1 = cg
+	if cg then
+		_sc1 = cg:FindFirstChildOfClass("ScreenGui")
+	end
+	for _, host in ipairs({ _sc, cg, _sc1 }) do
+		if host then
+			for _, n in ipairs({ "SkinHubESPTags", "SkinHubCustomCursor", "SkinHubLanguagePicker" }) do
+				local inst = host:FindFirstChild(n)
+				if inst then
+					pcall(function()
+						inst:Destroy()
+					end)
+				end
+			end
+		end
+	end
+	cloneref(game:GetService("StarterGui")):SetCore("SendNotification", { Title = "红星HX中心",
+		Text = "\u{5DF2}\u{68C0}\u{6D4B}\u{5230}\u{91CD}\u{590D}\u{6267}\u{884C}, \u{65E7}\u{7EBF}\u{7A0B}\u{4E0E}\u{5B9E}\u{4F8B}\u{5DF2}\u{5F3A}\u{5236}\u{6E05}\u{7406}",
+		Duration = 3
+	})
+end)
+getgenv().SkinHubLoaded = true
+local __SkinHubLoadStart = tick_()
+local HttpService = cloneref(game:GetService("HttpService"))
+local TeleportService = cloneref(game:GetService("TeleportService"))
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/main/Library.lua"))()
+getgenv().SkinHubInstance = Library
+local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/main/addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/main/addons/SaveManager.lua"))()
+local Options = Library.Options
+local Toggles = Library.Toggles
+local L = {}
+local Players = cloneref(game:GetService("Players"))
+local RunService = cloneref(game:GetService("RunService"))
+local UserInputService = cloneref(game:GetService("UserInputService"))
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local TweenService = cloneref(game:GetService("TweenService"))
+local Lighting = cloneref(game:GetService("Lighting"))
+local Stats = cloneref(game:GetService("Stats"))
+local CoreGui = cloneref(game:GetService("CoreGui"))
+local MarketplaceService = cloneref(game:GetService("MarketplaceService"))
+local LocalPlayer = Players.LocalPlayer
+local function getPlayerGui()
+	local pg = LocalPlayer:FindFirstChild("PlayerGui")
+	if pg then
+		return pg
+	end
+	return LocalPlayer:WaitForChild("PlayerGui")
+end
+local SkinHubLogo = "fish"
+pcall(function()
+	local ImageManager = Library.ImageManager
+	if not ImageManager then
+		return
+	end
+	if not ImageManager.GetAsset("SkinHubLogo") then
+		ImageManager.AddAsset("SkinHubLogo", 0, "https://raw.githubusercontent.com/Zephyrastic/sepweqeq/main/UI_image.png")
+	end
+	SkinHubLogo = ImageManager.GetAsset("SkinHubLogo") or SkinHubLogo
+end)
+local __LoadTotal = 100
+local Loading = Library:CreateLoading({ Title = "红星HX中心", Icon = SkinHubLogo, IconSize = UDim2.fromOffset(40, 40), CurrentStep = 0,
+	TotalSteps = __LoadTotal, ShowSidebar = false, AlwaysOnTop = true, WindowWidth = 460,
+	WindowHeight = 220, ContentWidth = 460
+})
+Loading:SetMessage("红星HX中心")
+Loading:SetDescription("\u{6B63}\u{5728}\u{521D}\u{59CB}\u{5316}...")
+Loading:SetCurrentStep(0)
+local LOADING_TEXT_WHITE = Color3.fromRGB(255, 255, 255)
+function __StyleLoadingDesc()
+	local _sc3 = Loading and Loading.ScreenGui
+	local sg = _sc3
+	if not _sc3 then
+		return
+	end
+	local function style(inst)
+		if inst:IsA("TextLabel") then
+			pcall(function()
+				inst.TextColor3 = LOADING_TEXT_WHITE
+				inst.TextStrokeTransparency = 0.4
+				inst.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+			end)
+			if not inst:GetAttribute("SkinHubDescLock") then
+				inst:SetAttribute("SkinHubDescLock", true)
+				inst:GetPropertyChangedSignal("TextColor3"):Connect(function()
+					if inst.TextColor3 ~= LOADING_TEXT_WHITE then
+						pcall(function()
+							inst.TextColor3 = LOADING_TEXT_WHITE
+						end)
+					end
+				end)
+			end
+		end
+	end
+	for _, inst in sg:GetDescendants() do
+		style(inst)
+	end
+	if not sg:GetAttribute("SkinHubDescHook") then
+		sg:SetAttribute("SkinHubDescHook", true)
+		sg.DescendantAdded:Connect(function(inst)
+			task.defer(function()
+				style(inst)
+			end)
+		end)
+	end
+end
+task.defer(function()
+	pcall(__StyleLoadingDesc)
+end)
+L.bootLanguage = "\u{4E2D}\u{6587}"
+L.bootLanguagePicked = false
+L.bootLanguageGui = nil
+local __FinishLoading
+local SetInterfaceLanguage
+do
+	local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+	local gui = New("ScreenGui", { Name = "SkinHubLanguagePicker", ResetOnSpawn = false, IgnoreGuiInset = true,
+		DisplayOrder = 2147483646
+	}, playerGui)
+	local frame = New("Frame", { AnchorPoint = v2new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -24), Size = UDim2.new(0, 280, 0, 76),
+		BackgroundColor3 = c3rgb(11, 11, 14), BackgroundTransparency = 0.15, BorderSizePixel = 0
+	}, gui)
+	New("UICorner", { CornerRadius = UDim.new(0, 10) }, frame)
+	New("UIStroke", { Color = c3rgb(42, 42, 50), Thickness = 1.5 }, frame)
+	New("TextLabel", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 4), Size = UDim2.new(1, 0, 0, 20),
+		Font = Enum.Font.GothamBold, Text = "\u{8BED}\u{8A00} / Language", TextColor3 = Color3.new(1, 1, 1),
+		TextSize = 14
+	}, frame)
+	local buttons = {}
+	local function refreshButtons()
+		for language, button in pairs(buttons) do
+			if language == L.bootLanguage then
+				button.BackgroundColor3 = c3rgb(225, 225, 232)
+				button.TextColor3 = c3rgb(4, 8, 16)
+			else
+				button.BackgroundColor3 = c3rgb(24, 24, 29)
+				button.TextColor3 = Color3.new(1, 1, 1)
+			end
+		end
+	end
+	local function makeButton(language, xOffset)
+		local button = New("TextButton", { Position = UDim2.new(0, xOffset, 0, 30), Size = UDim2.new(0, 128, 0, 36),
+			Font = Enum.Font.GothamBold, Text = language, TextSize = 15, BorderSizePixel = 0
+		}, frame)
+		New("UICorner", { CornerRadius = UDim.new(0, 8) }, button)
+		button.MouseButton1Click:Connect(function()
+			L.bootLanguage = language
+			L.bootLanguagePicked = true
+			refreshButtons()
+			if type(__FinishLoading) == "function" then
+				task.defer(__FinishLoading)
+			end
+		end)
+		buttons[language] = button
+	end
+	makeButton("\u{4E2D}\u{6587}", 8)
+	makeButton("English", 144)
+	refreshButtons()
+	L.bootLanguageGui = gui
+end
+function L.destroyBootLanguagePicker()
+	if L.bootLanguageGui == nil then
+		return
+	end
+	pcall(function()
+		L.bootLanguageGui:Destroy()
+	end)
+	L.bootLanguageGui = nil
+end
+do
+	local ACCENT = c3rgb(225, 225, 232)
+	local MAIN = c3rgb(24, 24, 29)
+	local BG = c3rgb(11, 11, 14)
+	local OUTL = c3rgb(42, 42, 50)
+	local WHITE = Color3.new(1, 1, 1)
+	local DESIRED_FONT = Font.fromEnum(Enum.Font.SciFi)
+	local root = Loading.ScreenGui
+	local function applyStyle(inst)
+		if inst:IsA("Frame") then
+			local c = inst.BackgroundColor3
+			if c == Color3.fromRGB(15, 15, 15) then
+				inst.BackgroundColor3 = BG
+			elseif c == Color3.fromRGB(25, 25, 25) then
+				inst.BackgroundColor3 = MAIN
+			elseif c == Color3.fromRGB(125, 85, 255) then
+				inst.BackgroundColor3 = ACCENT
+			end
+			if inst.BackgroundColor3 == ACCENT and inst.Size.Y.Offset <= 20 then
+				local g = inst:FindFirstChildOfClass("UIGradient")
+				if not g then
+					g = Instance.new("UIGradient")
+					g.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, c3rgb(70, 220, 255)),
+						ColorSequenceKeypoint.new(0.5, c3rgb(150, 245, 255)),
+						ColorSequenceKeypoint.new(1, c3rgb(70, 220, 255))
+					})
+					g.Rotation = 0
+					g.Parent = inst
+					task.spawn(function()
+						local t0 = tick_()
+						while inst and inst.Parent do
+							g.Rotation = (tick_() - t0) * 90 % 360
+							RunService.RenderStepped:Wait()
+						end
+					end)
+				end
+			end
+		elseif inst:IsA("ImageLabel") then
+			if not (inst.Size.X.Offset >= 36) then
+				inst.ImageColor3 = ACCENT
+			end
+		elseif inst:IsA("UIStroke") then
+			inst.Color = OUTL
+		elseif inst:IsA("TextLabel") then
+			inst.TextColor3 = WHITE
+			inst.TextStrokeTransparency = 0.4
+			inst.TextStrokeColor3 = c3rgb(15, 15, 20)
+			if not inst:GetAttribute("SkinHubFontGuard") then
+				inst:SetAttribute("SkinHubFontGuard", true)
+				local applying = false
+				inst:GetPropertyChangedSignal("FontFace"):Connect(function()
+					if applying then
+						return
+					end
+					if inst.FontFace ~= DESIRED_FONT then
+						applying = true
+						inst.FontFace = DESIRED_FONT
+						applying = false
+					end
+				end)
+				task.spawn(function()
+					while inst and inst.Parent do
+						if inst.FontFace ~= DESIRED_FONT then
+							inst.FontFace = DESIRED_FONT
+						end
+						task.wait(0.15)
+					end
+				end)
+			end
+			if inst.FontFace ~= DESIRED_FONT then
+				inst.FontFace = DESIRED_FONT
+			end
+			if inst.Text == "红星HX中心" and not inst:GetAttribute("SkinHubTitleFX") then
+				inst:SetAttribute("SkinHubTitleFX", true)
+				local grad = Instance.new("UIGradient")
+				grad.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, c3rgb(120, 220, 255)),
+					ColorSequenceKeypoint.new(0.35, c3rgb(200, 245, 255)),
+					ColorSequenceKeypoint.new(0.65, c3rgb(140, 220, 255)),
+					ColorSequenceKeypoint.new(1, c3rgb(120, 220, 255))
+				})
+				grad.Parent = inst
+				task.spawn(function()
+					local t0 = tick_()
+					while inst and inst.Parent do
+						grad.Rotation = (tick_() - t0) * 60 % 360
+						RunService.RenderStepped:Wait()
+					end
+				end)
+			end
+		end
+	end
+	for _, d in root:GetDescendants() do
+		pcall(applyStyle, d)
+	end
+	root.DescendantAdded:Connect(function(d)
+		task.defer(function()
+			pcall(applyStyle, d)
+		end)
+	end)
+	task.defer(function()
+		for _, d in root:GetDescendants() do
+			if d:IsA("Frame") and d.Size.X.Offset >= 400 and d.Size.Y.Offset >= 180 then
+				local s = d:FindFirstChildOfClass("UIStroke")
+				if s then
+					s.Color = ACCENT
+					s.Thickness = 1.5
+					s.Transparency = 0.4
+					task.spawn(function()
+						while d and d.Parent do
+							local breath = (math.sin(tick_() * 1.8) + 1) * 0.5
+							s.Transparency = 0.25 + breath * 0.35
+							task.wait(0.05)
+						end
+					end)
+				end
+				break
+			end
+		end
+	end)
+end
+local __loadProgress = 0
+local __loadTarget = 90
+local __loadStop = false
+local __finishStarted = false
+task.spawn(function()
+	local msgList = { { 0, "红星HX中心", "\u{6B63}\u{5728}\u{542F}\u{52A8}..." },
+		{ 15, "\u{521D}\u{59CB}\u{5316}\u{754C}\u{9762}", "\u{51C6}\u{5907} UI \u{8D44}\u{6E90}..." },
+		{ 35, "\u{52A0}\u{8F7D}\u{6A21}\u{5757}", "\u{89E3}\u{6790}\u{811A}\u{672C}\u{6A21}\u{5757}..." },
+		{ 55, "\u{6784}\u{5EFA}\u{529F}\u{80FD}", "\u{6CE8}\u{518C}\u{81EA}\u{52A8}\u{5316}\u{4EFB}\u{52A1}..." },
+		{ 75, "\u{5E94}\u{7528}\u{4E3B}\u{9898}", "\u{8C03}\u{6574}\u{914D}\u{8272}\u{4E0E}\u{5B57}\u{4F53}..." },
+		{ 85, "\u{6536}\u{5C3E}\u{5DE5}\u{4F5C}", "\u{68C0}\u{67E5}\u{4F9D}\u{8D56}..." }
+	}
+	local function setStage(i)
+		if i <= #msgList then
+			Loading:SetMessage(msgList[i][2])
+			Loading:SetDescription(msgList[i][3])
+			pcall(__StyleLoadingDesc)
+		end
+		__loadProgress = i <= #msgList and msgList[i][1] or __loadTarget
+		if __loadProgress > __loadTarget then
+			__loadProgress = __loadTarget
+		end
+		Loading:SetCurrentStep(__loadProgress)
+	end
+	for i = 1, #msgList do
+		if __loadStop then
+			break
+		end
+		setStage(i)
+		task.wait(0.2)
+	end
+	__loadProgress = __loadTarget
+	Loading:SetCurrentStep(90)
+	Loading:SetMessage("\u{8BF7}\u{9009}\u{62E9}\u{8BED}\u{8A00}")
+	Loading:SetDescription("Please select your language")
+	pcall(__StyleLoadingDesc)
+end)
+__FinishLoading = function()
+	if __finishStarted then
+		return
+	end
+	__finishStarted = true
+	__loadStop = true
+	L.destroyBootLanguagePicker()
+	local function __applyBootLanguage()
+		if L.bootLanguagePicked and Options and Options.InterfaceLanguage then
+			pcall(function()
+				Options.InterfaceLanguage:SetValue(L.bootLanguage)
+			end)
+			pcall(function()
+				SetInterfaceLanguage(L.bootLanguage)
+			end)
+		end
+	end
+	local function __pumpLoadProgress()
+		task.wait(0.15)
+		Loading:SetMessage("\u{52A0}\u{8F7D}\u{5B8C}\u{6210}")
+		Loading:SetDescription("Loading complete")
+		pcall(__StyleLoadingDesc)
+		while __loadProgress < __LoadTotal do
+			__loadProgress = math.min(__loadProgress + 2, __LoadTotal)
+			Loading:SetCurrentStep(__loadProgress)
+			task.wait(0.03)
+		end
+		task.wait(0.4)
+	end
+	local function __fadeThroughBlack()
+		local overlayGui = New("ScreenGui", { Name = "SkinHubFadeOverlay", DisplayOrder = 2147483647, IgnoreGuiInset = true, ResetOnSpawn = false })
+		local parented = pcall(function()
+			overlayGui.Parent = cloneref(game:GetService("CoreGui"))
+		end)
+		if not parented then
+			overlayGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+		end
+		local blackFrame = New("Frame", { BackgroundColor3 = Color3.fromRGB(11, 11, 14), BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, ZIndex = 1
+		}, overlayGui)
+		local fadeIn = TweenService:Create(blackFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0 })
+		fadeIn:Play()
+		fadeIn.Completed:Wait()
+		Loading:Continue()
+		task.wait(0.15)
+		local fadeOut = TweenService:Create(blackFrame, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 })
+		fadeOut:Play()
+		fadeOut.Completed:Wait()
+		overlayGui:Destroy()
+	end
+	local function __notifyLoadComplete()
+		pcall(function()
+			cloneref(game:GetService("StarterGui")):SetCore("SendNotification", { Title = "红星HX中心",
+				Text = strFormat("\u{5DF2}\u{52A0}\u{8F7D}\u{FF0C}\u{8017}\u{65F6} %.2f \u{79D2}", tick_() - __SkinHubLoadStart),
+				Duration = 5
+			})
+		end)
+	end
+	task.spawn(function()
+		__applyBootLanguage()
+		__pumpLoadProgress()
+		__fadeThroughBlack()
+		__notifyLoadComplete()
+	end)
+end
+Library.Scheme = { BackgroundColor = c3rgb(11, 11, 14), MainColor = c3rgb(24, 24, 29),
+	AccentColor = c3rgb(225, 225, 232), OutlineColor = c3rgb(42, 42, 50),
+	FontColor = Color3.new(1, 1, 1), Font = Font.fromEnum(Enum.Font.Code), RedColor = c3rgb(255, 80, 80),
+	DestructiveColor = c3rgb(220, 38, 38), DarkColor = Color3.new(0, 0, 0),
+	WhiteColor = Color3.new(1, 1, 1), BackgroundImage = ""
+}
+local Window = Library:CreateWindow({ Title = "红星HX中心", Footer = "红星HX中心",
+	NotifySide = "Right", ShowCustomCursor = true, CornerRadius = 6,
+	TabButtonsStyle = { Gap = 6, Padding = 6, CornerRadius = 6, Indicator = true, IndicatorWidth = 2, IndicatorHeight = 20 },
+	Icon = SkinHubLogo, IconSize = UDim2.fromOffset(44, 44),
+	Animations = { ToggleWindow = false, TabSwitch = true, Groupbox = true, Dropdown = true, KeyPicker = true },
+	TabTransitionTime = 0.22, TabSwipeOffset = 26, TabSwipeFrom = "Auto"
+})
+Window:SetBackgroundImage("https://chaton-images.s3.us-east-2.amazonaws.com/2nYnUSm4IHM9ZoKPb9vOCQ8yD9ViQSSm9IhbteSWBiOS77KNuQva6TSW5pOaatyX_3400x2200x2064384.jpeg")
+task.defer(function()
+	local tries = 0
+	while (not Library.Window or not Library.Window.MainFrame) and tries < 100 do
+		task.wait(0.1)
+		tries = tries + 1
+	end
+	if not Library.Window or not Library.Window.MainFrame then
+		return
+	end
+	local MainFrame = Library.Window.MainFrame
+	local IMAGE_URL = "https://chaton-images.s3.us-east-2.amazonaws.com/bbVoPpX4A7o8DGZQxwh7L9OuQIaY2aKZyD1MXkSywJy79qVM8t3PJ4VEVdqEa3re_1024x576x383878.png"
+	local WIDTH = 800
+	local HEIGHT = 300
+	local OFFSET_X = 0
+	local OVERLAP_Y = 90
+	local finalImage = IMAGE_URL
+	pcall(function()
+		local IM = Library.ImageManager
+		if not IM then
+			return
+		end
+		local assetName = "SkinHubTopCharacter_" .. tostring(os.time()) .. "_" .. tostring(math.random(1, 999999))
+		IM.AddAsset(assetName, 0, IMAGE_URL)
+		finalImage = IM.GetAsset(assetName) or IMAGE_URL
+	end)
+	if MainFrame:FindFirstChild("TopBorderCharacter") then
+		MainFrame.TopBorderCharacter:Destroy()
+	end
+	New("ImageLabel", { Name = "TopBorderCharacter", BackgroundTransparency = 1, BorderSizePixel = 0, Image = finalImage,
+		ImageTransparency = 0, ScaleType = Enum.ScaleType.Fit, AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, OFFSET_X, 0, OVERLAP_Y), Size = UDim2.new(0, WIDTH, 0, HEIGHT), ZIndex = 5
+	}, MainFrame)
+	MainFrame.ClipsDescendants = false
+end)
+local _ok, _err = pcall(function()
+	local RunSvc = game:GetService("RunService")
+	local TweenSvc = game:GetService("TweenService")
+	local c3 = Color3.fromRGB
+	local c3n = Color3.new
+	local CFG = { Accent = c3(122, 176, 255), Accent2 = c3(170, 128, 255), AccentHit = c3(60, 220, 255),
+		Bg = c3(8, 9, 14), Main = c3(18, 20, 27), Outline = c3(46, 50, 66), Dark = c3(3, 4, 7),
+		Text = c3(236, 241, 252), FlowSpeed = 0.7, GlowOn = 0.12, LiftAmt = 1.025, PressScale = 0.93,
+		Shadow = true, TextStrokes = false
+	}
+	local lib = type(Library) == "table" and Library or getgenv().Library
+	if type(lib) ~= "table" then
+		return
+	end
+	getgenv().SkinHubDisableHighlights = false
+	local function give(conn)
+		pcall(function()
+			lib:GiveSignal(conn)
+		end)
+		return conn
+	end
+	if type(lib.Scheme) == "table" then
+		local m = { BackgroundColor = CFG.Bg, MainColor = CFG.Main, AccentColor = CFG.Accent,
+			OutlineColor = CFG.Outline, DarkColor = CFG.Dark, TextColor = CFG.Text, FontColor = CFG.Text
+		}
+		for k, v in pairs(m) do
+			pcall(function()
+				lib.Scheme[k] = v
+			end)
+		end
+	end
+	pcall(function()
+		lib:UpdateColorsUsingRegistry()
+	end)
+	local BEVEL_N = ColorSequence.new({ ColorSequenceKeypoint.new(0, c3n(1, 1, 1)), ColorSequenceKeypoint.new(0.55, c3n(0.95, 0.96, 0.99)),
+		ColorSequenceKeypoint.new(1, c3n(0.62, 0.65, 0.74))
+	})
+	local BEVEL_H = ColorSequence.new({ ColorSequenceKeypoint.new(0, c3n(1, 1, 1)), ColorSequenceKeypoint.new(0.55, c3n(1, 1, 1)),
+		ColorSequenceKeypoint.new(1, c3n(0.8, 0.84, 0.98))
+	})
+	local function addBevel(o)
+		if o:FindFirstChild("SH_Bevel") or o:FindFirstChildOfClass("UIGradient") then
+			return nil
+		end
+		return (New("UIGradient", { Name = "SH_Bevel", Rotation = 90, Color = BEVEL_N }, o))
+	end
+	local g_lastLeave
+	local function addHover(o)
+		if o:GetAttribute("SH_HoverBound") then
+			return
+		end
+		o:SetAttribute("SH_HoverBound", true)
+		local glow = o:FindFirstChild("SH_Glow")
+		if not glow then
+			glow = Instance.new("UIStroke")
+			glow.Name = "SH_Glow"
+			glow.Color = CFG.Accent
+			glow.Thickness = 1
+			glow.Transparency = 1
+			glow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			glow.LineJoinMode = Enum.LineJoinMode.Round
+			glow.Parent = o
+		end
+		local us = o:FindFirstChild("SH_Scale")
+		if not us then
+			us = Instance.new("UIScale")
+			us.Name = "SH_Scale"
+			us.Scale = 1
+			us.Parent = o
+		end
+		local bevel = o:FindFirstChild("SH_Bevel")
+		local hoverOn = false
+		local function enter()
+			if getgenv().SkinHubDisableHighlights then
+				return
+			end
+			hoverOn = true
+			glow.Color = CFG.AccentHit
+			TweenSvc:Create(glow, TweenInfo.new(0.16, Enum.EasingStyle.Quad), { Transparency = CFG.GlowOn, Thickness = 1.8 }):Play()
+			TweenSvc:Create(us, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { Scale = CFG.LiftAmt }):Play()
+			if bevel then
+				bevel.Color = BEVEL_H
+			end
+		end
+		local function leave()
+			hoverOn = false
+			TweenSvc:Create(glow, TweenInfo.new(0.5, Enum.EasingStyle.Quad), { Transparency = 1, Thickness = 1 }):Play()
+			TweenSvc:Create(us, TweenInfo.new(0.26, Enum.EasingStyle.Quad), { Scale = 1 }):Play()
+			if bevel then
+				bevel.Color = BEVEL_N
+			end
+			if g_lastLeave == leave then
+				g_lastLeave = nil
+			end
+		end
+		local function instantLeave()
+			hoverOn = false
+			glow.Transparency = 1
+			glow.Thickness = 1
+			glow.Color = CFG.Accent
+			us.Scale = 1
+			if bevel then
+				bevel.Color = BEVEL_N
+			end
+			if g_lastLeave == leave then
+				g_lastLeave = nil
+			end
+		end
+		give(o.MouseEnter:Connect(function()
+			if g_lastLeave and g_lastLeave ~= leave then
+				pcall(g_lastLeave)
+				g_lastLeave = nil
+			end
+			g_lastLeave = instantLeave
+			enter()
+		end))
+		give(o.MouseLeave:Connect(function()
+			leave()
+		end))
+		give(o.MouseButton1Down:Connect(function()
+			if getgenv().SkinHubDisableHighlights then
+				return
+			end
+			glow.Color = CFG.AccentHit
+			TweenSvc:Create(us, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = CFG.PressScale }):Play()
+		end))
+		give(o.MouseButton1Up:Connect(function()
+			local _sc4 = hoverOn
+			local tweenInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			if hoverOn then
+				local TweenSvc_v1 = TweenSvc
+				local _t3893 = us
+				local TweenInfo_v1 = TweenInfo
+				local Enum_v1 = Enum
+				local Enum_v2 = Enum
+				_sc4 = CFG.LiftAmt
+			end
+			TweenSvc:Create(us, tweenInfo, { Scale = _sc4 or 1 }):Play()
+		end))
+	end
+	local function addTextStroke(o)
+		if o:FindFirstChild("SH_TS") then
+			return
+		end
+		New("UIStroke", { Name = "SH_TS", Color = c3n(0, 0, 0), Thickness = 1, Transparency = 0.72,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		}, o)
+	end
+	local function decorateLine(o)
+		if o:FindFirstChild("SH_LineFade") or o:FindFirstChildOfClass("UIGradient") then
+			return
+		end
+		local g = Instance.new("UIGradient")
+		g.Name = "SH_LineFade"
+		g.Rotation = 0
+		g.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.18, 0.15),
+			NumberSequenceKeypoint.new(0.82, 0.15), NumberSequenceKeypoint.new(1, 1)
+		})
+		g.Parent = o
+	end
+	local function styleObject(o)
+		if not o or not o.Parent then
+			return
+		end
+		if not o:IsA("GuiObject") then
+			return
+		end
+		if (o.Name or ""):sub(1, 3) == "SH_" then
+			return
+		end
+		if o:GetAttribute("SH_Done") then
+			return
+		end
+		local size = o.AbsoluteSize
+		if size.X <= 1 or size.Y <= 1 then
+			local t = o:GetAttribute("SH_Try") or 0
+			if t < 6 then
+				o:SetAttribute("SH_Try", t + 1)
+				task.delay(0.12, function()
+					if o.Parent and not o:GetAttribute("SH_Done") then
+						queue(o)
+					end
+				end)
+			end
+			return
+		end
+		o:SetAttribute("SH_Done", true)
+		local _sc6_s1 = o:IsA("TextLabel") or o:IsA("TextButton")
+		local isText = _sc6_s1 or o:IsA("TextBox")
+		local isBtn = o:IsA("GuiButton")
+		if o:IsA("Frame") and size.Y <= 2 and size.X > 20 then
+			decorateLine(o)
+			return
+		end
+		if (o:IsA("Frame") or o:IsA("GuiButton")) and o.BackgroundTransparency < 0.98 then
+			if o:FindFirstChildOfClass("UICorner") or size.Y >= 20 then
+				addBevel(o)
+			end
+		end
+		if isText and size.X >= 30 and CFG.TextStrokes then
+			addTextStroke(o)
+		end
+		if isBtn and size.X >= 40 and size.Y >= 18 then
+			local skipRow = false
+			if size.Y <= 24 then
+				for _, c in ipairs(o:GetChildren()) do
+					local cx, cy = c.AbsoluteSize.X, c.AbsoluteSize.Y
+					if c:IsA("Frame") and cx <= 26 and cy <= 26 and cx >= cy - 4 and cy >= cx - 4 then
+						skipRow = true
+						break
+					end
+				end
+			end
+			if not skipRow then
+				addHover(o)
+			end
+		end
+	end
+	local pending, pendingSet = {}, {}
+	function queue(o)
+		if not o or pendingSet[o] then
+			return
+		end
+		pendingSet[o] = true
+		pending[#pending + 1] = o
+	end
+	local function flush()
+		local n = 0
+		while #pending > 0 and n < 150 do
+			local o = table.remove(pending, 1)
+			pendingSet[o] = nil
+			n += 1
+			if o and o.Parent then
+				pcall(styleObject, o)
+			end
+		end
+	end
+	local origAddOutline = lib.AddOutline
+	if type(origAddOutline) == "function" then
+		function lib.AddOutline(self, frame, ...)
+			local r = { origAddOutline(self, frame, ...) }
+			if frame then
+				queue(frame)
+			end
+			return table.unpack(r)
+		end
+	end
+	local origMakeLine = lib.MakeLine
+	if type(origMakeLine) == "function" then
+		function lib.MakeLine(self, frame, ...)
+			local r = { origMakeLine(self, frame, ...) }
+			if frame then
+				task.defer(function()
+					for _, c in ipairs(frame:GetChildren()) do
+						if c:IsA("Frame") then
+							decorateLine(c)
+						end
+					end
+				end)
+			end
+			return table.unpack(r)
+		end
+	end
+	local function decorateWindow(main)
+		if main:GetAttribute("SH_Win") then
+			return
+		end
+		main:SetAttribute("SH_Win", true)
+		local flow = New("UIStroke", { Name = "SH_Flow", Color = c3n(1, 1, 1), Thickness = 2.5, Transparency = 0.05,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Round
+		})
+		local grad = Instance.new("UIGradient")
+		grad.Name = "SH_FlowGrad"
+		grad.Rotation = 0
+		grad.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, c3(10, 20, 50)), ColorSequenceKeypoint.new(0.08, c3(255, 255, 255)),
+			ColorSequenceKeypoint.new(0.16, c3(0, 200, 255)), ColorSequenceKeypoint.new(0.28, c3(10, 20, 50)),
+			ColorSequenceKeypoint.new(0.44, c3(230, 80, 255)), ColorSequenceKeypoint.new(0.56, c3(10, 20, 50)),
+			ColorSequenceKeypoint.new(0.72, c3(0, 220, 255)), ColorSequenceKeypoint.new(0.84, c3(10, 20, 50)),
+			ColorSequenceKeypoint.new(1, c3(10, 20, 50))
+		})
+		grad.Parent = flow
+		flow.Parent = main
+		local sheen = New("Frame", { Name = "SH_Sheen", BackgroundColor3 = c3n(1, 1, 1), BackgroundTransparency = 0.9,
+			BorderSizePixel = 0, Active = false, ZIndex = -2, Position = UDim2.new(0, 1, 0, 1),
+			Size = UDim2.new(1, -2, 0, 132)
+		})
+		New("UICorner", { CornerRadius = UDim.new(0, 14) }, sheen)
+		local shg = Instance.new("UIGradient")
+		shg.Rotation = 90
+		shg.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(0.45, 0.93),
+			NumberSequenceKeypoint.new(1, 1)
+		})
+		shg.Parent = sheen
+		sheen.Parent = main
+		local us
+		if not main:FindFirstChildOfClass("UIScale") then
+			us = Instance.new("UIScale")
+			us.Name = "SH_WinUS"
+			us.Scale = 0.94
+			us.Parent = main
+		end
+		main.GroupTransparency = 1
+		TweenSvc:Create(main, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { GroupTransparency = 0 }):Play()
+		if us then
+			TweenSvc:Create(us, TweenInfo.new(0.65, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		end
+		local layers = {}
+		if CFG.Shadow and main.Parent then
+			for i, cfg in ipairs({ { 5, 0.74 }, { 11, 0.88 } }) do
+				local f = New("Frame", { Name = "SH_Shadow" .. i, BackgroundColor3 = c3n(0, 0, 0), BackgroundTransparency = cfg[2],
+					BorderSizePixel = 0, ZIndex = math.max(-1, main.ZIndex - 1), Visible = false
+				})
+				New("UICorner", { CornerRadius = UDim.new(0, 12) }, f)
+				f.Parent = main.Parent
+				layers[#layers + 1] = { f = f, pad = cfg[1] }
+			end
+		end
+		local T = 0
+		give(RunSvc.RenderStepped:Connect(function(dt)
+			T += dt
+			flow.Enabled = not getgenv().SkinHubDisableHighlights
+			if CFG.FlowSpeed > 0 and flow.Enabled then
+				grad.Offset = Vector2.new(T * 0.7 % 1, 0)
+				grad.Rotation = -30 + math.sin(T * 1.6) * 30
+				flow.Transparency = 0.02 + 0.08 * math.abs(math.sin(T * 3))
+				flow.Thickness = 2.5 + 0.25 * math.sin(T * 5)
+			end
+			for _, L in ipairs(layers) do
+				local f = L.f
+				if f.Parent and main.Parent and main.Visible then
+					local p = L.pad
+					f.Position = UDim2.new(main.Position.X.Scale, main.Position.X.Offset - p, main.Position.Y.Scale, main.Position.Y.Offset - p)
+					f.Size = UDim2.new(main.Size.X.Scale, main.Size.X.Offset + p * 2, main.Size.Y.Scale, main.Size.Y.Offset + p * 2)
+					f.Visible = true
+				elseif f.Visible then
+					f.Visible = false
+				end
+			end
+		end))
+		if not main:GetAttribute("SH_CursorGlow") then
+			main:SetAttribute("SH_CursorGlow", true)
+			local UIS = game:GetService("UserInputService")
+			local GuiSvc = game:GetService("GuiService")
+			local rootGui = main
+			while rootGui and not rootGui:IsA("ScreenGui") do
+				rootGui = rootGui.Parent
+			end
+			local hostParent = rootGui or main.Parent
+			local useInset = rootGui and not rootGui.IgnoreGuiInset or true
+			local insetTop = 0
+			pcall(function()
+				insetTop = GuiSvc:GetGuiInset().Y
+			end)
+			local cursor = New("Frame", { Name = "SH_CursorGlow", AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1,
+				BorderSizePixel = 0, Size = UDim2.fromOffset(72, 72), ZIndex = 20000, Visible = false,
+				Active = false
+			}, hostParent)
+			local specs = { { size = 72, trans = 0.955 }, { size = 50, trans = 0.915 }, { size = 30, trans = 0.835 },
+				{ size = 14, trans = 0.695 }
+			}
+			for _, cfg in ipairs(specs) do
+				local f = New("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+					Size = UDim2.fromOffset(cfg.size, cfg.size), BackgroundColor3 = c3n(1, 1, 1),
+					BackgroundTransparency = cfg.trans, BorderSizePixel = 0, ZIndex = 20000, Active = false
+				})
+				New("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+				f.Parent = cursor
+			end
+			give(RunSvc.RenderStepped:Connect(function()
+				if not cursor.Parent then
+					return
+				end
+				if getgenv().SkinHubDisableHighlights then
+					cursor.Visible = false
+					return
+				end
+				if not main.Parent or not main.Visible then
+					cursor.Visible = false
+					return
+				end
+				local m = UIS:GetMouseLocation()
+				local mp = main.AbsolutePosition
+				local ms = main.AbsoluteSize
+				local _sc9 = m.X >= mp.X and m.X <= mp.X + ms.X and m.Y >= mp.Y and m.Y <= mp.Y + ms.Y
+				cursor.Visible = _sc9
+				if _sc9 then
+					local px = m.X
+					local _sc10 = useInset and m.Y - insetTop or m.Y
+					cursor.Position = UDim2.fromOffset(px, _sc10)
+				end
+			end))
+		end
+	end
+	local function installNow()
+		local screen = lib.ScreenGui
+		if not screen then
+			return false
+		end
+		for _, d in ipairs(screen:GetDescendants()) do
+			if d:IsA("GuiObject") then
+				queue(d)
+			end
+		end
+		give(screen.DescendantAdded:Connect(function(d)
+			if d:IsA("GuiObject") then
+				queue(d)
+			end
+		end))
+		give(RunSvc.RenderStepped:Connect(flush))
+		local main = screen:FindFirstChild("Main", true)
+		if main and main:IsA("GuiObject") then
+			decorateWindow(main)
+		else
+			task.spawn(function()
+				for _ = 1, 100 do
+					local m = screen:FindFirstChild("Main", true)
+					if m and m:IsA("GuiObject") then
+						decorateWindow(m)
+						return
+					end
+					task.wait(0.1)
+				end
+			end)
+		end
+		return true
+	end
+	task.spawn(function()
+		for _ = 1, 150 do
+			if pcall(installNow) then
+				return
+			end
+			task.wait(0.1)
+		end
+	end)
+end)
+if not _ok then
+	warn("[Aurora] error:", _err)
+end
+Library.IsMobile = true
+for _, child in Library.Floats:GetChildren() do
+	if not child:IsA("TextButton") then
+		continue
+	end
+	if child.Text == "Toggle" then
+		child.Text = "HX中心"
+		child.TextColor3 = Color3.new(1, 1, 1)
+		child.TextSize = 13
+		child.FontFace = Font.fromEnum(Enum.Font.SciFi)
+		child.Size = UDim2.new(0, 55, 0, 55)
+		child.Position = UDim2.new(0.02, 0, 0.5, -120)
+		child.AnchorPoint = v2new(0, 0.5)
+		child.BackgroundTransparency = 1
+		local corner = child:FindFirstChild("UICorner")
+		if not corner then
+			corner = Instance.new("UICorner")
+			corner.Parent = child
+		end
+		corner.CornerRadius = UDim.new(1, 0)
+		local gradient = child:FindFirstChild("UIGradient")
+		if gradient then
+			gradient:Destroy()
+		end
+		local strokeOuter = child:FindFirstChild("StrokeOuter")
+		if not strokeOuter then
+			strokeOuter = Instance.new("UIStroke")
+			strokeOuter.Name = "StrokeOuter"
+			strokeOuter.Parent = child
+		end
+		strokeOuter.Thickness = 4
+		strokeOuter.Transparency = 0.2
+		strokeOuter.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		strokeOuter.Color = c3rgb(0, 110, 180)
+		local strokeInner = child:FindFirstChild("StrokeInner")
+		if not strokeInner then
+			strokeInner = Instance.new("UIStroke")
+			strokeInner.Name = "StrokeInner"
+			strokeInner.Parent = child
+		end
+		strokeInner.Thickness = 2
+		strokeInner.Transparency = 0
+		strokeInner.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		strokeInner.Color = c3rgb(220, 250, 255)
+		child.TextStrokeColor3 = c3rgb(15, 15, 20)
+		child.TextStrokeTransparency = 0.35
+		local DESIRED_FONT = Font.fromEnum(Enum.Font.SciFi)
+		local applying = false
+		child:GetPropertyChangedSignal("FontFace"):Connect(function()
+			if applying then
+				return
+			end
+			if child.FontFace ~= DESIRED_FONT then
+				applying = true
+				child.FontFace = DESIRED_FONT
+				applying = false
+			end
+		end)
+		task.spawn(function()
+			while child and child.Parent do
+				if child.FontFace ~= DESIRED_FONT then
+					child.FontFace = DESIRED_FONT
+				end
+				task.wait(0.2)
+			end
+		end)
+		task.spawn(function()
+			while child and child.Parent do
+				local t = tick_()
+				local breath = (math.sin(t * 2.2) + 1) * 0.5
+				strokeOuter.Transparency = 0.1 + breath * 0.3
+				strokeInner.Transparency = 0.3 + breath * 0.4
+				task.wait(0.05)
+			end
+		end)
+		local BASE_SIZE = 55
+		local HOVER_SIZE = 62
+		local PRESS_SIZE = 48
+		local DRAG_SIZE = 68
+		local isHovering = false
+		local isPressing = false
+		local isDragging = false
+		local activeTween
+		local function updateSize()
+			if activeTween then
+				activeTween:Cancel()
+			end
+			local target
+			if isDragging then
+				target = DRAG_SIZE
+			elseif isPressing then
+				target = PRESS_SIZE
+			elseif isHovering then
+				target = HOVER_SIZE
+			else
+				target = BASE_SIZE
+			end
+			activeTween = TweenService:Create(child, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, target, 0, target) })
+			activeTween:Play()
+		end
+		child.MouseEnter:Connect(function()
+			isHovering = true
+			updateSize()
+		end)
+		child.MouseLeave:Connect(function()
+			isHovering = false
+			updateSize()
+		end)
+		local pressStart
+		local DRAG_THRESHOLD = 5
+		child.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch
+			then
+				isPressing = true
+				pressStart = input.Position
+				updateSize()
+			end
+		end)
+		child.InputChanged:Connect(function(input)
+			if not isPressing or not pressStart then
+				return
+			end
+			if (input.UserInputType == Enum.UserInputType.MouseMovement
+					or input.UserInputType == Enum.UserInputType.Touch)
+				and (input.Position - pressStart).Magnitude > DRAG_THRESHOLD
+				and not isDragging
+			then
+				isDragging = true
+				updateSize()
+			end
+		end)
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch
+			then
+				isPressing = false
+				isDragging = false
+				pressStart = nil
+				updateSize()
+			end
+		end)
+	end
+	if child.Text == "Lock" then
+		child.Visible = false
+	end
+end
+local InterfaceLanguage = "\u{4E2D}\u{6587}"
+local EnglishText = {}
+local EnglishFragments = {}
+local OriginalText = setmetatable({}, { __mode = "k" })
+do
+	local baseUrl = "https://raw.githubusercontent.com/Zephyrastic/Translations/main/translations/"
+	local function load(fileName, target)
+		pcall(function()
+			local response = game:HttpGet(baseUrl .. fileName .. "?t=" .. tostring(os.time()))
+			local remote = HttpService:JSONDecode(response)
+			if typeof(remote) ~= "table" then
+				return
+			end
+			for chinese, english in remote do
+				if typeof(chinese) == "string" and typeof(english) == "string" and english ~= "" then
+					target[chinese] = english
+				end
+			end
+		end)
+	end
+	load("en.json", EnglishText)
+	load("en-fragments.json", EnglishFragments)
+end
+local TranslateText
+local fragmentList = {}
+for chinese, english in EnglishFragments do
+	table.insert(fragmentList, { chinese, english })
+end
+table.sort(fragmentList, function(a, b)
+	if #a[1] ~= #b[1] then
+		return #a[1] > #b[1]
+	end
+	return a[1] < b[1]
+end)
+local cache, cacheSize = {}, 0
+TranslateText = function(text)
+	if InterfaceLanguage ~= "English" or type(text) ~= "string" then
+		return text
+	end
+	local mapped = EnglishText[text]
+	if mapped then
+		return mapped
+	end
+	local b = text:byte(1)
+	if b and b < 128 then
+		return text
+	end
+	local cached = cache[text]
+	if cached then
+		return cached
+	end
+	local translated = text
+	for _, pair in fragmentList do
+		translated = string.gsub(translated, pair[1], pair[2])
+	end
+	if cacheSize >= 2000 then
+		cache, cacheSize = {}, 0
+	end
+	cache[text] = translated
+	cacheSize += 1
+	return translated
+end
+getgenv().TranslateText = TranslateText
+local ChineseText = {}
+for chinese, english in EnglishText do
+	ChineseText[english] = chinese
+end
+local function GetOriginalChineseText(text)
+	return ChineseText[text] or text
+end
+local function HasTextProperty(instance)
+	local _sc3_s1 = instance:IsA("TextLabel") or instance:IsA("TextButton")
+	return _sc3_s1 or instance:IsA("TextBox")
+end
+local function HookObsidianTooltips()
+	local _sc3 = Library and Library.ScreenGui
+	local screenGui = _sc3
+	if not _sc3 then
+		return false
+	end
+	local hookedAny = false
+	for _, inst in screenGui:GetChildren() do
+		if inst:IsA("TextLabel")
+			and inst:FindFirstChildOfClass("UIPadding")
+			and inst:FindFirstChildOfClass("UIStroke")
+			and inst:FindFirstChildOfClass("UICorner")
+			and not inst:GetAttribute("SkinHubTooltipHook")
+		then
+			inst:SetAttribute("SkinHubTooltipHook", true)
+			local applying = false
+			inst:GetPropertyChangedSignal("Text"):Connect(function()
+				if applying then
+					return
+				end
+				local text = inst.Text
+				if type(text) ~= "string" or text == "" then
+					return
+				end
+				local replacement
+				if InterfaceLanguage == "English" then
+					replacement = TranslateText(text)
+				else
+					local b = string.byte(text, 1)
+					if b and b < 128 then
+						replacement = GetOriginalChineseText(text)
+					end
+				end
+				if not replacement or replacement == text then
+					return
+				end
+				applying = true
+				inst.Text = replacement
+				applying = false
+			end)
+			hookedAny = true
+		end
+	end
+	return hookedAny
+end
+local function AttachLiveTranslator(inst)
+	if inst:GetAttribute("SkinHubLiveTranslate") then
+		return
+	end
+	inst:SetAttribute("SkinHubLiveTranslate", true)
+	local applying = false
+	inst:GetPropertyChangedSignal("Text"):Connect(function()
+		if applying then
+			return
+		end
+		local text = inst.Text
+		if type(text) ~= "string" or text == "" then
+			return
+		end
+		if InterfaceLanguage ~= "English" then
+			return
+		end
+		local translated = EnglishText[text]
+		if not translated and text:find(", ", 1, true) then
+			local parts = string.split(text, ", ")
+			local out = table.create(#parts)
+			for i, part in parts do
+				local mapped = EnglishText[part]
+				if not mapped then
+					out = nil
+					break
+				end
+				out[i] = mapped
+			end
+			if out then
+				translated = table.concat(out, ", ")
+			end
+		end
+		if translated and translated ~= text then
+			applying = true
+			inst.Text = translated
+			applying = false
+		end
+	end)
+	if inst:IsA("TextBox") then
+		inst:GetPropertyChangedSignal("PlaceholderText"):Connect(function()
+			if applying then
+				return
+			end
+			local ptext = inst.PlaceholderText
+			if type(ptext) ~= "string" or ptext == "" then
+				return
+			end
+			if InterfaceLanguage ~= "English" then
+				return
+			end
+			local ptranslated = EnglishText[ptext]
+			if ptranslated and ptranslated ~= ptext then
+				applying = true
+				inst.PlaceholderText = ptranslated
+				applying = false
+			end
+		end)
+	end
+end
+local function InstallLiveTranslation()
+	local _sc3 = Library and Library.ScreenGui
+	local screenGui = _sc3
+	if not _sc3 then
+		return false
+	end
+	if screenGui:GetAttribute("SkinHubLiveTranslateRoot") then
+		return true
+	end
+	screenGui:SetAttribute("SkinHubLiveTranslateRoot", true)
+	screenGui.DescendantAdded:Connect(function(inst)
+		if HasTextProperty(inst) then
+			AttachLiveTranslator(inst)
+		end
+	end)
+	for _, inst in screenGui:GetDescendants() do
+		if HasTextProperty(inst) then
+			AttachLiveTranslator(inst)
+		end
+	end
+	return true
+end
+task.spawn(function()
+	local tooltipsHooked = false
+	for _ = 1, 100 do
+		local _sc3 = tooltipsHooked or HookObsidianTooltips()
+		tooltipsHooked = _sc3
+		if _sc3 and InstallLiveTranslation() then
+			break
+		end
+		task.wait(0.2)
+	end
+	while not InstallLiveTranslation() do
+		task.wait(0.5)
+	end
+end)
+local function GetInterfaceRoots()
+	local roots = {}
+	for _, root in { Library and Library.ScreenGui or false, LocalPlayer:FindFirstChildOfClass("PlayerGui") or false,
+		CoreGui or false
+	} do
+		if root then
+			table.insert(roots, root)
+		end
+	end
+	for i = #roots, 1, -1 do
+		for j, other in roots do
+			if i ~= j and roots[i]:IsDescendantOf(other) then
+				table.remove(roots, i)
+				break
+			end
+		end
+	end
+	return roots
+end
+local function IsRobloxCoreScriptInstance(instance)
+	local _sc3 = Library and Library.ScreenGui
+	local screenGui = _sc3
+	local _sc4 = _sc3
+	if _sc3 then
+		_sc4 = instance == screenGui or instance:IsDescendantOf(screenGui)
+	end
+	if _sc4 then
+		return false
+	end
+	local current = instance
+	for _ = 1, 20 do
+		if not current then
+			return false
+		end
+		if current.Name == "RobloxGui" then
+			return true
+		end
+		current = current.Parent
+	end
+	return false
+end
+local function TranslateInstance(instance, language)
+	if typeof(instance.Text) ~= "string" then
+		return
+	end
+	local canonical = GetOriginalChineseText(instance.Text)
+	OriginalText[instance] = canonical
+	local newText = language == "English" and TranslateText(canonical) or canonical
+	if instance.Text ~= newText then
+		instance.Text = newText
+	end
+end
+SetInterfaceLanguage = function(language)
+	InterfaceLanguage = language
+	for _, root in GetInterfaceRoots() do
+		for _, instance in root:GetDescendants() do
+			if HasTextProperty(instance) and not IsRobloxCoreScriptInstance(instance) then
+				TranslateInstance(instance, language)
+			end
+		end
+	end
+	for _, name in { "PvpAimPart", "AutoRepairMode", "AuraMode" } do
+		local option = Options[name]
+		if option then
+			option:SetValue(option.Value)
+		end
+	end
+end
+task.defer(function()
+	local pending = {}
+	local scheduled = false
+	local function flush()
+		scheduled = false
+		if InterfaceLanguage ~= "English" then
+			table.clear(pending)
+			return
+		end
+		for instance in pending do
+			if instance.Parent and HasTextProperty(instance) and not IsRobloxCoreScriptInstance(instance) then
+				TranslateInstance(instance, InterfaceLanguage)
+			end
+		end
+		table.clear(pending)
+	end
+	for _, root in GetInterfaceRoots() do
+		root.DescendantAdded:Connect(function(instance)
+			if InterfaceLanguage ~= "English" then
+				return
+			end
+			if not HasTextProperty(instance) then
+				return
+			end
+			pending[instance] = true
+			if not scheduled then
+				scheduled = true
+				task.defer(flush)
+			end
+		end)
+	end
+end)
+local Tabs = {
+	Settings = Window:AddTab("\u{8BBE}\u{7F6E}", "settings")
+}
+local MenuGroup = Tabs.Settings:AddGroupbox({ Side = "Left", Name = "\u{83DC}\u{5355}" })
+MenuGroup:AddDropdown("InterfaceLanguage", { Text = "\u{8BED}\u{8A00} / Language", Values = { "\u{4E2D}\u{6587}", "English" }, Default = 1,
+	["Callback"] = function(value)
+		SetInterfaceLanguage(value)
+	end
+})
+Options.InterfaceLanguage:OnChanged(function()
+	SetInterfaceLanguage(Options.InterfaceLanguage.Value)
+end)
+do
+	local CompactModeToggle = MenuGroup:AddCheckbox(
+			"CompactMode",
+			{ Text = "\u{7D27}\u{51D1}\u{4FA7}\u{8FB9}\u{680F} / Compact Sidebar", Default = false,
+				["Callback"] = function(value)
+					pcall(function()
+						Window:SetCompact(value)
+					end)
+				end
+			}
+		)
+		or Toggles.CompactMode
+	if CompactModeToggle then
+		CompactModeToggle:OnChanged(function()
+			pcall(function()
+				Window:SetCompact(CompactModeToggle.Value)
+			end)
+		end)
+	end
+end
+Library:OnUnload(function()
+	getgenv().SkinHubLoaded = nil
+	local function safeDisconnect(conn)
+		if conn and typeof(conn) == "RBXScriptConnection" and conn.Connected then
+			conn:Disconnect()
+		end
+	end
+	pcall(function()
+		local _sc25 = getgenv and getgenv()
+		local g = _sc25
+		local _sc26 = _sc25 and g.__SkinHubFlyDrag
+		local d = _sc26
+		if _sc26 then
+			for _, c in d do
+				safeDisconnect(c)
+			end
+		end
+		if g then
+			g.__SkinHubFlyDrag = nil
+		end
+	end)
+	pcall(function()
+		if L._themeWatchConns then
+			for _, c in L._themeWatchConns do
+				safeDisconnect(c)
+			end
+			L._themeWatchConns = {}
+		end
+	end)
+	pcall(function()
+		if L.watermark and L.watermark.Destroy then
+			pcall(function()
+				L.watermark:Destroy()
+			end)
+			L.watermark = nil
+		end
+	end)
+	pcall(function()
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local _sc28 = pg and pg:FindFirstChild("SkinHubCustomCursor")
+		local h = _sc28
+		if _sc28 then
+			h:Destroy()
+		end
+	end)
+	getgenv().SkinHubCleanupAll = function()
+		pcall(function()
+			local sg = Library and Library.ScreenGui
+			if sg then
+				sg:Destroy()
+			end
+		end)
+	end
+end)
+MenuGroup:AddButton("\u{5378}\u{8F7D}\u{811A}\u{672C}", function()
+	pcall(function()
+		if Toggles then
+			for _, toggle in Toggles do
+				if toggle and toggle.Value == true and toggle.SetValue then
+					pcall(function()
+						toggle:SetValue(false)
+					end)
+				end
+			end
+		end
+	end)
+	Library:Unload()
+end)
+MenuGroup:AddLabel("\u{83DC}\u{5355}\u{5FEB}\u{6377}\u{952E}"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
+Library.ToggleKeybind = Options.MenuKeybind
+pcall(function()
+	local BackgroundGroup = Tabs.Settings:AddGroupbox({ Side = "Left", Name = "\u{80CC}\u{666F}\u{56FE}\u{8BBE}\u{7F6E}" })
+	BackgroundGroup:AddDropdown("BackgroundImageDropdown", { Text = "\u{9009}\u{62E9}\u{80CC}\u{666F}\u{56FE}\u{7247}",
+		Values = { "\u{56FE}1", "\u{56FE}2", "\u{65E0}\u{80CC}\u{666F}" }, Default = 1, Multi = false,
+		Searchable = false,
+		["Callback"] = function(Value)
+			Value = GetOriginalChineseText(Value)
+			local url
+			if Value == "\u{56FE}1" then
+				url = "https://chaton-images.s3.us-east-2.amazonaws.com/2nYnUSm4IHM9ZoKPb9vOCQ8yD9ViQSSm9IhbteSWBiOS77KNuQva6TSW5pOaatyX_3400x2200x2064384.jpeg"
+			elseif Value == "\u{56FE}2" then
+				url = "https://chaton-images.s3.us-east-2.amazonaws.com/YvudrmtpgyXGDtruTUdjSczuhDWoBLhnMVgW8n6aDP2hdQwYPHQNzOoc7bQqkvFI_1826x1200x657016.jpeg"
+			end
+			if url ~= "" then
+				pcall(function()
+					Window:SetBackgroundImage(url)
+				end)
+			end
+		end
+	})
+end)
+pcall(function()
+	local CURSOR_IMAGE = "rbxassetid://11780968239"
+	local cursorGui, cursorConn
+	local cursorEnabled = true
+	local function buildCustomCursor()
+		if cursorConn then
+			pcall(function()
+				cursorConn:Disconnect()
+			end)
+			cursorConn = nil
+		end
+		if cursorGui then
+			pcall(function()
+				cursorGui:Destroy()
+			end)
+			cursorGui = nil
+		end
+		pcall(function()
+			UserInputService.MouseIconEnabled = true
+		end)
+		if not cursorEnabled then
+			return
+		end
+		local sg = New("ScreenGui", { Name = "SkinHubCustomCursor", DisplayOrder = 99999, IgnoreGuiInset = true, ResetOnSpawn = false })
+		local parented = false
+		pcall(function()
+			if gethui then
+				sg.Parent = gethui()
+				parented = true
+			end
+		end)
+		if not parented then
+			pcall(function()
+				sg.Parent = game:GetService("CoreGui")
+				parented = true
+			end)
+		end
+		if not parented then
+			sg.Parent = LocalPlayer:WaitForChild("PlayerGui")
+		end
+		cursorGui = sg
+		New("ImageLabel", { Name = "CursorImage", BackgroundTransparency = 1, Image = CURSOR_IMAGE,
+			Size = UDim2.new(0, 35, 0, 35), AnchorPoint = Vector2.new(0.5, 0.5)
+		}, sg)
+		pcall(function()
+			UserInputService.MouseIconEnabled = false
+		end)
+		cursorConn = RunService.RenderStepped:Connect(function()
+			if not cursorGui then
+				return
+			end
+			pcall(function()
+				UserInputService.MouseIconEnabled = false
+				local m = UserInputService:GetMouseLocation()
+				local i = cursorGui:FindFirstChild("CursorImage")
+				if i then
+					i.Position = UDim2.new(0, m.X, 0, m.Y)
+				end
+			end)
+		end)
+	end
+	MenuGroup:AddCheckbox("CustomCursorToggle", { Text = "\u{542F}\u{7528}\u{5149}\u{6807}", Default = true,
+		["Callback"] = function(v)
+			cursorEnabled = v
+			buildCustomCursor()
+		end
+	})
+	buildCustomCursor()
+end)
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+ThemeManager:SetFolder("MyScriptTheme")
+SaveManager:SetFolder("MyScriptConfig")
+pcall(function()
+	ThemeManager:SetDefaultTheme({ FontColor = "ffffff", MainColor = "18181d", AccentColor = "e1e1e8", BackgroundColor = "0b0b0e",
+		OutlineColor = "2a2a32", BackgroundImage = "", FontFace = "RobotoMono"
+	})
+end)
+SaveManager:BuildConfigSection(Tabs.Settings)
+ThemeManager:ApplyToTab(Tabs.Settings)
+Library.CornerRadius = 10
+if Options.FontFace then
+	Options.FontFace:SetValue("RobotoMono")
+end
+Library:UpdateColorsUsingRegistry()
+function L.fixInputColors(root)
+	local _sc4 = root or Library and Library.ScreenGui
+	root = _sc4
+	if not _sc4 then
+		return
+	end
+	local scheme = Library.Scheme
+	local field = scheme.MainColor:Lerp(Color3.new(1, 1, 1), 0.18)
+	local font = scheme.FontColor
+	local function paint(inst)
+		if inst:IsA("TextBox") then
+			inst.BackgroundColor3 = field
+			inst.BackgroundTransparency = 0
+			inst.TextColor3 = font
+			pcall(function()
+				inst.PlaceholderColor3 = font:Lerp(field, 0.45)
+			end)
+		else
+			if (inst:IsA("Frame") or inst:IsA("TextButton")) and inst.Name:lower():find("dropdown", 1, true) then
+				inst.BackgroundColor3 = field
+				inst.BackgroundTransparency = 0
+				if inst:IsA("TextButton") then
+					inst.TextColor3 = font
+				end
+				for _, child in inst:GetDescendants() do
+					if child:IsA("TextLabel") or child:IsA("TextButton") then
+						child.TextColor3 = font
+					end
+				end
+			end
+		end
+	end
+	for _, inst in root:GetDescendants() do
+		pcall(paint, inst)
+	end
+end
+task.defer(function()
+	L.fixInputColors()
+	if Library.ScreenGui then
+		Library.ScreenGui.DescendantAdded:Connect(function(inst)
+			task.defer(function()
+				L.fixInputColors(inst)
+			end)
+		end)
+	end
+	local token = 0
+	local function recolorSoon()
+		token = token + 1
+		local mine = token
+		task.delay(0.4, function()
+			if mine == token then
+				L.fixInputColors()
+			end
+		end)
+	end
+	for _, key in { "MainColor", "BackgroundColor", "FontColor" } do
+		if Options[key] and Options[key].OnChanged then
+			Options[key]:OnChanged(recolorSoon)
+		end
+	end
+end)
+task.defer(function()
+	if L.bootLanguagePicked then
+		Options.InterfaceLanguage:SetValue(L.bootLanguage)
+	else
+		SetInterfaceLanguage(Options.InterfaceLanguage.Value)
+	end
+end)
+local function findTitleLabel()
+	local _sc4 = Library.Window and Library.Window.MainFrame
+	local mf = _sc4
+	if not _sc4 then
+		return nil
+	end
+	for _, d in mf:GetDescendants() do
+		if d:IsA("TextLabel") and d.Text then
+			if d.Text == "红星HX中心" or d.Text:find("红星HX中心") then
+				return d
+			end
+		end
+	end
+	return nil
+end
+task.spawn(function()
+	local label
+	repeat
+		label = findTitleLabel()
+		if not label then
+			task.wait(0.2)
+		end
+	until label
+	label.FontFace = Font.fromEnum(Enum.Font.SciFi)
+	label.TextSize = 22
+	local grad = label:FindFirstChildOfClass("UIGradient")
+	if not grad then
+		grad = Instance.new("UIGradient")
+		grad.Parent = label
+	end
+	grad.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 220, 255)),
+		ColorSequenceKeypoint.new(0.25, Color3.fromRGB(200, 245, 255)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0.75, Color3.fromRGB(140, 220, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 220, 255))
+	})
+	grad.Rotation = 0
+	label.TextStrokeColor3 = Color3.fromRGB(30, 120, 200)
+	label.TextStrokeTransparency = 0.3
+	local t0 = tick_()
+	while label and label.Parent do
+		grad.Rotation = (tick_() - t0) * 60 % 360
+		RunService.RenderStepped:Wait()
+	end
+end)
+do
+	local ICON_SIZE = 36
+	local ICON_PADDING = 56
+	local ICON_OFFSET = -44
+	local watermark = Library:AddDraggableLabel({ Text = "红星HX中心", Icon = SkinHubLogo, IconPosition = "left" })
+	L.watermark = watermark
+	task.defer(function()
+		local label = watermark.Label
+		if not label then
+			return
+		end
+		local iconImg = label:FindFirstChildOfClass("ImageLabel")
+		if iconImg then
+			iconImg.Size = UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
+			iconImg.Position = UDim2.new(0, ICON_OFFSET, 0.5, 0)
+		end
+		local padding = label:FindFirstChildOfClass("UIPadding")
+		if padding then
+			padding.PaddingLeft = UDim.new(0, ICON_PADDING)
+		end
+	end)
+end
+L._themeWatchConns = L._themeWatchConns or {}
+Library:UpdateColorsUsingRegistry()
+do
+	local ACCENT = Library.Scheme.AccentColor
+	local OUTLINE = Library.Scheme.OutlineColor
+	local MAIN = Library.Scheme.MainColor
+	local BG = Library.Scheme.BackgroundColor
+	Color3.fromRGB(math.floor(ACCENT.R * 255 * 0.55), math.floor(ACCENT.G * 255 * 0.55), math.floor(ACCENT.B * 255 * 0.55))
+	local BORDER_GLOW = Color3.fromRGB(math.min(255, OUTLINE.R * 255 + 30), math.min(255, OUTLINE.G * 255 + 30), math.min(255, OUTLINE.B * 255 + 45))
+	local HOVER_BG = Color3.fromRGB(math.min(255, MAIN.R * 255 + 12), math.min(255, MAIN.G * 255 + 12), math.min(255, MAIN.B * 255 + 18))
+	local function ensure(cls, parent)
+		local e = parent:FindFirstChildOfClass(cls)
+		if not e then
+			e = Instance.new(cls)
+			e.Parent = parent
+		end
+		return e
+	end
+	local function setGradient(inst, c1, c2, rot)
+		local g = ensure("UIGradient", inst)
+		g.Color = ColorSequence.new(c1, c2)
+		g.Rotation = rot or 90
+	end
+	local function setStroke(inst, color, thickness, transparency)
+		local s = ensure("UIStroke", inst)
+		s.Color = color
+		s.Thickness = thickness or 1
+		s.Transparency = transparency or 0
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		return s
+	end
+	local function setCorner(inst, radius)
+		local c = ensure("UICorner", inst)
+		c.CornerRadius = UDim.new(0, radius)
+		return c
+	end
+	local function beautify(inst)
+		if not inst.Parent then
+			return
+		end
+		if inst:IsA("TextButton")
+			and inst.Size.X.Scale == 1
+			and inst.Size.Y.Offset >= 34
+			and inst.Size.Y.Offset <= 44
+		then
+			if not inst:GetAttribute("SkinHub_Tab") then
+				inst:SetAttribute("SkinHub_Tab", true)
+				setStroke(inst, BORDER_GLOW, 1, 0.55)
+				setGradient(inst, MAIN, Color3.fromRGB(math.min(255, MAIN.R * 255 + 8), math.min(255, MAIN.G * 255 + 8), math.min(255, MAIN.B * 255 + 14)), 90)
+			end
+			return
+		end
+		if (inst:IsA("TextButton") or inst:IsA("TextBox"))
+			and inst.Size.Y.Offset >= 18
+			and inst.Size.Y.Offset <= 25
+			and inst.BackgroundTransparency < 1
+			and inst.BackgroundColor3 ~= Color3.new(1, 1, 1)
+		then
+			if not inst:GetAttribute("SkinHub_Ctrl") then
+				inst:SetAttribute("SkinHub_Ctrl", true)
+				setCorner(inst, 6)
+				setStroke(inst, OUTLINE, 1, 0.1)
+				if inst.BackgroundColor3 == MAIN or inst.BackgroundColor3 == BG then
+					setGradient(inst, inst.BackgroundColor3, Color3.fromRGB(math.min(255, inst.BackgroundColor3.R * 255 + 10), math.min(255, inst.BackgroundColor3.G * 255 + 10), math.min(255, inst.BackgroundColor3.B * 255 + 16)), 90)
+				end
+				local baseColor = inst.BackgroundColor3
+				inst.MouseEnter:Connect(function()
+					if inst:GetAttribute("SkinHub_Dis") then
+						return
+					end
+					TweenService:Create(inst, TweenInfo.new(0.15), { BackgroundColor3 = HOVER_BG }):Play()
+				end)
+				inst.MouseLeave:Connect(function()
+					if inst:GetAttribute("SkinHub_Dis") then
+						return
+					end
+					TweenService:Create(inst, TweenInfo.new(0.15), { BackgroundColor3 = baseColor }):Play()
+				end)
+			end
+			return
+		end
+		if inst:IsA("Frame") and inst.BackgroundTransparency == 0 then
+			local corner = inst:FindFirstChildOfClass("UICorner")
+			if corner and inst:FindFirstChildOfClass("UIStroke") and not inst:GetAttribute("SkinHub_Box") then
+				inst:SetAttribute("SkinHub_Box", true)
+				local s = inst:FindFirstChildOfClass("UIStroke")
+				if s then
+					s.Color = BORDER_GLOW
+					s.Transparency = 0.55
+					s.Thickness = 1
+				end
+			end
+		end
+	end
+	task.defer(function()
+		local sg = Library.ScreenGui
+		if not sg then
+			return
+		end
+		for _, inst in sg:GetDescendants() do
+			pcall(beautify, inst)
+		end
+		table.insert(L._themeWatchConns, sg.DescendantAdded:Connect(function(inst)
+			task.defer(function()
+				pcall(beautify, inst)
+			end)
+		end))
+	end)
+end
+for _, opt in pairs(Options) do
+	if type(opt) == "table" and opt.Type == "KeyPicker" and not opt.SkinHubBlankNone then
+		opt.SkinHubBlankNone = true
+		local update = opt.Update
+		function opt.Update(self, ...)
+			if self.Value == "None" then
+				self.DisplayValue = ""
+			end
+			return update(self, ...)
+		end
+		opt:Update()
+	end
+end
+
+
+--==========================================================
+-- 完美投掷（已汉化整合）
+-- 接管游戏投掷计量器 ThrowMeter：把自动点击阈值锁定 0.6，
+-- 并强制锁定投掷条，稳定命中完美区间
+--==========================================================
+do
+	local ThrowFeature = {
+		Enabled = false,
+		Status = "未启用",
+		Meter = nil,
+		OriginalRun = nil,
+		Wrapper = nil
+	}
+	getgenv().HXPerfectThrow = ThrowFeature
+
+	local function getThrowMeter()
+		if ThrowFeature.Meter then
+			return ThrowFeature.Meter
+		end
+		local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
+		if not playerScripts then
+			return nil
+		end
+		local client = playerScripts:FindFirstChild("Client")
+		if not client then
+			return nil
+		end
+		local controllers = client:FindFirstChild("Controllers")
+		if not controllers then
+			return nil
+		end
+		local moduleScript = controllers:FindFirstChild("ThrowMeter")
+		if not moduleScript then
+			return nil
+		end
+		local ok, meter = pcall(require, moduleScript)
+		if not ok or type(meter) ~= "table" or type(meter.Run) ~= "function" then
+			return nil
+		end
+		ThrowFeature.Meter = meter
+		return meter
+	end
+
+	local function stopPerfectThrow()
+		if not ThrowFeature.Enabled then
+			ThrowFeature.Status = "未启用"
+			return
+		end
+		ThrowFeature.Enabled = false
+		ThrowFeature.Status = "已关闭"
+		local meter = ThrowFeature.Meter
+		if meter and ThrowFeature.Wrapper and meter.Run == ThrowFeature.Wrapper then
+			meter.Run = ThrowFeature.OriginalRun
+		end
+	end
+
+	local function startPerfectThrow()
+		if ThrowFeature.Enabled then
+			ThrowFeature.Status = "运行中"
+			return true
+		end
+		local meter = getThrowMeter()
+		if not meter then
+			ThrowFeature.Status = "未找到投掷控制器"
+			return false
+		end
+		local originalRun = meter.Run
+		ThrowFeature.OriginalRun = originalRun
+		local wrapper
+		wrapper = function(instance, ...)
+			if not ThrowFeature.Enabled then
+				return originalRun(instance, ...)
+			end
+			local previousTap = meter.TestAutoTap
+			meter.TestAutoTap = 0.6
+			pcall(function()
+				instance:SetLocked(true)
+			end)
+			local results = table.pack(pcall(originalRun, instance, ...))
+			if meter.TestAutoTap == 0.6 then
+				meter.TestAutoTap = previousTap
+			end
+			if not results[1] then
+				error(results[2], 0)
+			end
+			return table.unpack(results, 2, results.n)
+		end
+		ThrowFeature.Wrapper = wrapper
+		meter.Run = wrapper
+		ThrowFeature.Enabled = true
+		ThrowFeature.Status = "运行中"
+		return true
+	end
+
+	Tabs.Throw = Window:AddTab("完美投掷", "crosshair")
+	local ThrowGroup = Tabs.Throw:AddGroupbox({ Side = "Left", Name = "完美投掷" })
+	local ThrowStatus = ThrowGroup:AddLabel("状态：未启用")
+
+	local function refreshThrowStatus()
+		pcall(function()
+			ThrowStatus:Set("状态：" .. ThrowFeature.Status)
+		end)
+	end
+
+	local ThrowToggle
+	ThrowToggle = ThrowGroup:AddToggle("PerfectThrowToggle", {
+		Text = "启用完美投掷",
+		Default = false,
+		["Callback"] = function(value)
+			if value then
+				if not startPerfectThrow() then
+					pcall(function()
+						ThrowToggle:SetValue(false)
+					end)
+					pcall(function()
+						Library:Notify("未找到投掷控制器，请在投掷玩法中使用", 4)
+					end)
+				end
+			else
+				stopPerfectThrow()
+			end
+			refreshThrowStatus()
+		end
+	})
+
+	ThrowGroup:AddButton("重新接管投掷控制器", function()
+		if ThrowFeature.Enabled then
+			stopPerfectThrow()
+		end
+		ThrowFeature.Meter = nil
+		local ok = startPerfectThrow()
+		if ok and ThrowToggle then
+			pcall(function()
+				ThrowToggle:SetValue(true)
+			end)
+		end
+		refreshThrowStatus()
+	end)
+
+	ThrowGroup:AddLabel("说明：自动锁定完美投掷力度，命中即为完美投掷")
+
+	local previousCleanup = getgenv().SkinHubCleanupAll
+	getgenv().SkinHubCleanupAll = function()
+		pcall(stopPerfectThrow)
+		if previousCleanup then
+			pcall(previousCleanup)
+		end
+	end
+
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			refreshThrowStatus()
+		end
+	end)
+end
